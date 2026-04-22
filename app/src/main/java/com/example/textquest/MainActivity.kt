@@ -3,27 +3,132 @@ package com.example.textquest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.textquest.ui.theme.TextQuestTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import androidx.navigation.compose.*
+import com.example.textquest.data.MockRepository
+import com.example.textquest.models.QuestCampaignModel
+import com.example.textquest.models.QuestSceneModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
-            TextQuestTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+            MaterialTheme {
+                MainScreenWithNavigation()
+            }
+        }
+    }
+}
+
+@Composable
+fun MainScreenWithNavigation() {
+    val navController = rememberNavController()
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.List, contentDescription = "Квести") },
+                    label = { Text("Квести") },
+                    selected = selectedTab == 0,
+                    onClick = {
+                        selectedTab = 0
+                        navController.navigate("list") {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Person, contentDescription = "Профіль") },
+                    label = { Text("Профіль") },
+                    selected = selectedTab == 1,
+                    onClick = {
+                        selectedTab = 1
+                        navController.navigate("profile") {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = "list",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable("list") {
+                CampaignListScreen(
+                    campaigns = MockRepository.campaigns,
+                    onCampaignClick = { campaignId ->
+                        navController.navigate("detail/$campaignId")
+                    }
+                )
+            }
+            composable("profile") {
+                ProfileScreen()
+            }
+            composable("detail/{campaignId}") { backStackEntry ->
+                val campaignId = backStackEntry.arguments?.getString("campaignId")
+                val campaign = MockRepository.campaigns.find { it.campaignId == campaignId }
+                if (campaign != null) {
+                    CampaignDetailScreen(
+                        campaign = campaign,
+                        onStartGame = { navController.navigate("gameplay/${campaign.campaignId}") },
+                        onBack = { navController.popBackStack() }
                     )
+                }
+            }
+            composable("gameplay/{campaignId}") { backStackEntry ->
+                val campaignId = backStackEntry.arguments?.getString("campaignId") ?: ""
+                val initialScene = MockRepository.getStartingScene(campaignId)
+                GameplayScreen(
+                    scene = initialScene,
+                    onExit = { navController.popBackStack("list", inclusive = false) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CampaignListScreen(campaigns: List<QuestCampaignModel>, onCampaignClick: (String) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Доступні квести", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 16.dp))
+        }
+        items(campaigns) { campaign ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .clickable { onCampaignClick(campaign.campaignId) },
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = campaign.title, style = MaterialTheme.typography.titleLarge)
+                    Text(text = "Складність: ${campaign.difficultyLevel}", color = Color.Gray)
+                    if (campaign.isCompleted) {
+                        Text(text = "Пройдено", color = Color.Green)
+                    }
                 }
             }
         }
@@ -31,17 +136,54 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+fun CampaignDetailScreen(campaign: QuestCampaignModel, onStartGame: () -> Unit, onBack: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Button(onClick = onBack, modifier = Modifier.padding(bottom = 16.dp)) {
+            Text("<- Назад")
+        }
+        Text(text = campaign.title, style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = "Рівень складності: ${campaign.difficultyLevel}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = "Статус: ${if (campaign.isCompleted) "Завершено" else "Не пройдено"}", style = MaterialTheme.typography.bodyLarge)
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onStartGame,
+            modifier = Modifier.fillMaxWidth().height(50.dp)
+        ) {
+            Text("Почати гру")
+        }
+    }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
-    TextQuestTheme {
-        Greeting("Android")
+fun GameplayScreen(scene: QuestSceneModel, onExit: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text(text = scene.descriptionText, style = MaterialTheme.typography.bodyLarge)
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        scene.availableChoices.forEach { choice ->
+            Button(
+                onClick = { },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                Text(choice.buttonLabel)
+            }
+        }
+        OutlinedButton(
+            onClick = onExit,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Здатися та вийти", color = Color.Red)
+        }
+    }
+}
+
+@Composable
+fun ProfileScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Екран профілю гравця", style = MaterialTheme.typography.headlineMedium)
     }
 }
