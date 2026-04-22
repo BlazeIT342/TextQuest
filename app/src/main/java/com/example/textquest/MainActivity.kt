@@ -16,7 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.example.textquest.data.MockRepository
 import com.example.textquest.models.QuestCampaignModel
@@ -34,9 +34,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreenWithNavigation() {
+fun MainScreenWithNavigation(viewModel: MainViewModel = viewModel()) {
     val navController = rememberNavController()
     var selectedTab by remember { mutableIntStateOf(0) }
+    val campaigns by viewModel.campaignsList.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -77,9 +78,12 @@ fun MainScreenWithNavigation() {
         ) {
             composable("list") {
                 CampaignListScreen(
-                    campaigns = MockRepository.campaigns,
+                    campaigns = campaigns,
                     onCampaignClick = { campaignId ->
                         navController.navigate("detail/$campaignId")
+                    },
+                    onSyncClick = {
+                        viewModel.refreshFromServer()
                     }
                 )
             }
@@ -88,12 +92,16 @@ fun MainScreenWithNavigation() {
             }
             composable("detail/{campaignId}") { backStackEntry ->
                 val campaignId = backStackEntry.arguments?.getString("campaignId")
-                val campaign = MockRepository.campaigns.find { it.campaignId == campaignId }
+                val campaign = campaigns.find { it.campaignId == campaignId }
                 if (campaign != null) {
                     CampaignDetailScreen(
                         campaign = campaign,
                         onStartGame = { navController.navigate("gameplay/${campaign.campaignId}") },
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        onDelete = {
+                            viewModel.deleteCampaign(campaign.campaignId)
+                            navController.popBackStack()
+                        }
                     )
                 }
             }
@@ -110,11 +118,31 @@ fun MainScreenWithNavigation() {
 }
 
 @Composable
-fun CampaignListScreen(campaigns: List<QuestCampaignModel>, onCampaignClick: (String) -> Unit) {
+fun CampaignListScreen(
+    campaigns: List<QuestCampaignModel>,
+    onCampaignClick: (String) -> Unit,
+    onSyncClick: () -> Unit
+) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Text("Доступні квести", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Доступні квести", style = MaterialTheme.typography.headlineMedium)
+                Button(onClick = onSyncClick) {
+                    Text("Синхронізувати")
+                }
+            }
         }
+
+        if (campaigns.isEmpty()) {
+            item {
+                Text("Список порожній. Натисніть 'Синхронізувати', щоб завантажити дані.", color = Color.Gray)
+            }
+        }
+
         items(campaigns) { campaign ->
             Card(
                 modifier = Modifier
@@ -136,10 +164,23 @@ fun CampaignListScreen(campaigns: List<QuestCampaignModel>, onCampaignClick: (St
 }
 
 @Composable
-fun CampaignDetailScreen(campaign: QuestCampaignModel, onStartGame: () -> Unit, onBack: () -> Unit) {
+fun CampaignDetailScreen(
+    campaign: QuestCampaignModel,
+    onStartGame: () -> Unit,
+    onBack: () -> Unit,
+    onDelete: () -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Button(onClick = onBack, modifier = Modifier.padding(bottom = 16.dp)) {
-            Text("<- Назад")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Button(onClick = onBack) {
+                Text("<- Назад")
+            }
+            OutlinedButton(onClick = onDelete) {
+                Text("Видалити квест", color = Color.Red)
+            }
         }
         Text(text = campaign.title, style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(8.dp))
