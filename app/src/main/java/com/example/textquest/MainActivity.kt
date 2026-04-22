@@ -8,8 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.example.textquest.data.MockRepository
+import com.example.textquest.data.socket.SocketState
 import com.example.textquest.models.QuestCampaignModel
 import com.example.textquest.models.QuestSceneModel
 
@@ -38,125 +38,64 @@ fun MainScreenWithNavigation(viewModel: MainViewModel = viewModel()) {
     val navController = rememberNavController()
     var selectedTab by remember { mutableIntStateOf(0) }
     val campaigns by viewModel.campaignsList.collectAsState()
+    val socketStatus by viewModel.socketStatus.collectAsState()
 
     Scaffold(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.List, contentDescription = "Квести") },
+                    icon = { Icon(Icons.Filled.List, null) },
                     label = { Text("Квести") },
                     selected = selectedTab == 0,
-                    onClick = {
-                        selectedTab = 0
-                        navController.navigate("list") {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onClick = { selectedTab = 0; navController.navigate("list") }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Person, contentDescription = "Профіль") },
-                    label = { Text("Профіль") },
+                    icon = { Icon(Icons.Filled.Star, null) },
+                    label = { Text("Лідери") },
                     selected = selectedTab == 1,
-                    onClick = {
-                        selectedTab = 1
-                        navController.navigate("profile") {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onClick = { selectedTab = 1; navController.navigate("leaderboard") }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Settings, null) },
+                    label = { Text("Опції") },
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2; navController.navigate("settings") }
                 )
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = "list",
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable("list") {
-                CampaignListScreen(
-                    campaigns = campaigns,
-                    onCampaignClick = { campaignId ->
-                        navController.navigate("detail/$campaignId")
-                    },
-                    onSyncClick = {
-                        viewModel.refreshFromServer()
-                    }
-                )
-            }
-            composable("profile") {
-                ProfileScreen()
-            }
-            composable("detail/{campaignId}") { backStackEntry ->
-                val campaignId = backStackEntry.arguments?.getString("campaignId")
-                val campaign = campaigns.find { it.campaignId == campaignId }
-                if (campaign != null) {
-                    CampaignDetailScreen(
-                        campaign = campaign,
-                        onStartGame = { navController.navigate("gameplay/${campaign.campaignId}") },
-                        onBack = { navController.popBackStack() },
-                        onDelete = {
-                            viewModel.deleteCampaign(campaign.campaignId)
-                            navController.popBackStack()
-                        }
-                    )
+        NavHost(navController, "list", Modifier.padding(innerPadding)) {
+            composable("list") { CampaignListScreen(campaigns, { navController.navigate("detail/$it") }, { viewModel.refreshFromServer() }) }
+            composable("leaderboard") { LeaderboardScreen() }
+            composable("settings") { SettingsScreen(socketStatus) }
+            composable("detail/{id}") { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("id")
+                campaigns.find { it.campaignId == id }?.let {
+                    CampaignDetailScreen(it, { navController.navigate("gameplay/${it.campaignId}") }, { navController.popBackStack() }, { viewModel.deleteCampaign(it.campaignId); navController.popBackStack() })
                 }
             }
-            composable("gameplay/{campaignId}") { backStackEntry ->
-                val campaignId = backStackEntry.arguments?.getString("campaignId") ?: ""
-                val initialScene = MockRepository.getStartingScene(campaignId)
-                GameplayScreen(
-                    scene = initialScene,
-                    onExit = { navController.popBackStack("list", inclusive = false) }
-                )
+            composable("gameplay/{id}") { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("id") ?: ""
+                GameplayScreen(MockRepository.getStartingScene(id), { navController.popBackStack("list", false) })
             }
         }
     }
 }
 
 @Composable
-fun CampaignListScreen(
-    campaigns: List<QuestCampaignModel>,
-    onCampaignClick: (String) -> Unit,
-    onSyncClick: () -> Unit
-) {
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+fun CampaignListScreen(campaigns: List<QuestCampaignModel>, onCampaignClick: (String) -> Unit, onSyncClick: () -> Unit) {
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Доступні квести", style = MaterialTheme.typography.headlineMedium)
-                Button(onClick = onSyncClick) {
-                    Text("Синхронізувати")
-                }
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Text("Квести", style = MaterialTheme.typography.headlineMedium)
+                Button(onClick = onSyncClick) { Text("Sync") }
             }
         }
-
-        if (campaigns.isEmpty()) {
-            item {
-                Text("Список порожній. Натисніть 'Синхронізувати', щоб завантажити дані.", color = Color.Gray)
-            }
-        }
-
         items(campaigns) { campaign ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .clickable { onCampaignClick(campaign.campaignId) },
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = campaign.title, style = MaterialTheme.typography.titleLarge)
-                    Text(text = "Складність: ${campaign.difficultyLevel}", color = Color.Gray)
-                    if (campaign.isCompleted) {
-                        Text(text = "Пройдено", color = Color.Green)
-                    }
+            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onCampaignClick(campaign.campaignId) }) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(campaign.title, style = MaterialTheme.typography.titleLarge)
+                    Text("Складність: ${campaign.difficultyLevel}", color = Color.Gray)
                 }
             }
         }
@@ -164,67 +103,67 @@ fun CampaignListScreen(
 }
 
 @Composable
-fun CampaignDetailScreen(
-    campaign: QuestCampaignModel,
-    onStartGame: () -> Unit,
-    onBack: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Button(onClick = onBack) {
-                Text("<- Назад")
-            }
-            OutlinedButton(onClick = onDelete) {
-                Text("Видалити квест", color = Color.Red)
+fun LeaderboardScreen() {
+    Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Таблиця лідерів", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+        listOf("Ultimate_Slayer - 5000 XP", "ShadowWalker - 4950 XP", "Adventurer - 1800 XP").forEach {
+            Text(it, Modifier.padding(8.dp), style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(socketStatus: SocketState, viewModel: MainViewModel = viewModel()) {
+    val notification by viewModel.serverNotifications.collectAsState()
+    var isSoundEnabled by remember { mutableStateOf(true) }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Налаштування", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Статус сервера: ${socketStatus.name}",
+                    color = if (socketStatus == SocketState.Connected) Color(0xFF4CAF50) else Color.Red,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Жива стрічка подій:", style = MaterialTheme.typography.labelLarge)
+                Text(notification, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
             }
         }
-        Text(text = campaign.title, style = MaterialTheme.typography.headlineLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Рівень складності: ${campaign.difficultyLevel}", style = MaterialTheme.typography.bodyLarge)
-        Text(text = "Статус: ${if (campaign.isCompleted) "Завершено" else "Не пройдено"}", style = MaterialTheme.typography.bodyLarge)
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        Button(
-            onClick = onStartGame,
-            modifier = Modifier.fillMaxWidth().height(50.dp)
-        ) {
-            Text("Почати гру")
+        Spacer(Modifier.height(20.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Звукові ефекти")
+            Spacer(Modifier.weight(1f))
+            Switch(
+                checked = isSoundEnabled,
+                onCheckedChange = { isSoundEnabled = it }
+            )
         }
+    }
+}
+
+@Composable
+fun CampaignDetailScreen(campaign: QuestCampaignModel, onStart: () -> Unit, onBack: () -> Unit, onDelete: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+            Button(onClick = onBack) { Text("Назад") }
+            Button(onClick = onDelete, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("Видалити") }
+        }
+        Text(campaign.title, style = MaterialTheme.typography.headlineLarge)
+        Spacer(Modifier.weight(1f))
+        Button(onClick = onStart, Modifier.fillMaxWidth().height(50.dp)) { Text("Почати") }
     }
 }
 
 @Composable
 fun GameplayScreen(scene: QuestSceneModel, onExit: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = scene.descriptionText, style = MaterialTheme.typography.bodyLarge)
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        scene.availableChoices.forEach { choice ->
-            Button(
-                onClick = { },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-            ) {
-                Text(choice.buttonLabel)
-            }
-        }
-        OutlinedButton(
-            onClick = onExit,
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
-        ) {
-            Text("Здатися та вийти", color = Color.Red)
-        }
-    }
-}
-
-@Composable
-fun ProfileScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Екран профілю гравця", style = MaterialTheme.typography.headlineMedium)
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(scene.descriptionText)
+        Spacer(Modifier.weight(1f))
+        OutlinedButton(onClick = onExit, Modifier.fillMaxWidth()) { Text("Вийти", color = Color.Red) }
     }
 }
