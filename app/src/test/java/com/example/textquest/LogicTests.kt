@@ -23,7 +23,7 @@ class LogicTests {
 
     @Test
     fun `test sync saves to database`() = runBlocking {
-        val mockData = listOf(CampaignEntity("1", "T", 1, false, 0L, "synced"))
+        val mockData = listOf(CampaignEntity("1", "T", "Desc", 1, false, 0L, "synced"))
         coEvery { apiMock.fetchCampaignsFromServer() } returns mockData
         repository.syncCampaigns()
         coVerify { dao.insertCampaigns(any()) }
@@ -31,7 +31,7 @@ class LogicTests {
 
     @Test
     fun `test get single campaign returns value`() = runBlocking {
-        val entity = CampaignEntity("1", "T", 1, false, 0L, "synced")
+        val entity = CampaignEntity("1", "T", "Desc", 1, false, 0L, "synced")
         coEvery { dao.getCampaignById("1") } returns entity
         val result = repository.getCampaignById("1")
         assertNotNull(result)
@@ -40,7 +40,7 @@ class LogicTests {
 
     @Test
     fun `test dao observation returns data`() = runBlocking {
-        val list = listOf(CampaignEntity("1", "T", 1, false, 0L, "synced"))
+        val list = listOf(CampaignEntity("1", "T", "Desc", 1, false, 0L, "synced"))
         every { dao.observeAllCampaigns() } returns flowOf(list)
         repository.observeAllCampaigns().collect {
             assertEquals(1, it.size)
@@ -62,13 +62,13 @@ class LogicTests {
 
     @Test
     fun `test entity mapping title correct`() {
-        val entity = CampaignEntity("1", "Title", 3, true, 100L, "synced")
+        val entity = CampaignEntity("1", "Title", "Description Text", 3, true, 100L, "synced")
         assertEquals("Title", entity.title)
     }
 
     @Test
     fun `test entity mapping sync status`() {
-        val entity = CampaignEntity("1", "T", 1, false, 0L, "pending")
+        val entity = CampaignEntity("1", "T", "D", 1, false, 0L, "pending")
         assertEquals("pending", entity.syncStatus)
     }
 
@@ -86,7 +86,7 @@ class LogicTests {
 
     @Test
     fun `test campaign model values match entity`() {
-        val entity = CampaignEntity("id", "title", 5, false, 123L, "synced")
+        val entity = CampaignEntity("id", "title", "desc", 5, false, 123L, "synced")
         assertEquals("id", entity.campaignId)
         assertEquals(5, entity.difficultyLevel)
     }

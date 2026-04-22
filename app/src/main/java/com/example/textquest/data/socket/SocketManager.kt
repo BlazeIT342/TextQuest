@@ -13,18 +13,21 @@ class SocketManager(private val client: OkHttpClient) {
     private val _messages = MutableStateFlow<String?>(null)
     val messages: StateFlow<String?> = _messages
 
-    private var retryCount = 0
-    private val maxRetries = 1
+    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var heartbeatJob: Job? = null
+    private var reconnectJob: Job? = null
 
     fun connect(url: String) {
-        if (_state.value == SocketState.Connected) return
+        if (_state.value == SocketState.Connected || _state.value == SocketState.Connecting) return
 
         _state.value = SocketState.Connecting
         val request = Request.Builder().url(url).build()
+
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 _state.value = SocketState.Connected
-                retryCount = 0
+                startHeartbeat()
+                reconnectJob?.cancel()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -32,34 +35,53 @@ class SocketManager(private val client: OkHttpClient) {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                handleFailure()
+                handleFailure(url)
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                stopHeartbeat()
+                _state.value = SocketState.Disconnected
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                stopHeartbeat()
                 _state.value = SocketState.Disconnected
             }
         })
     }
 
-    private fun handleFailure() {
-        if (retryCount < maxRetries) {
-            retryCount++
-            _state.value = SocketState.Reconnecting
-            CoroutineScope(Dispatchers.IO).launch {
-                delay(3000)
-                connect("ws://mock.url")
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = managerScope.launch {
+            while (isActive) {
+                delay(8000)
+                if (_state.value == SocketState.Connected) {
+                    webSocket?.send("heartbeat_ping")
+                }
             }
-        } else {
-            _state.value = SocketState.Disconnected
         }
     }
 
-    fun send(message: String) {
-        webSocket?.send(message)
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+    }
+
+    private fun handleFailure(url: String) {
+        stopHeartbeat()
+        _state.value = SocketState.Disconnected
+
+        reconnectJob?.cancel()
+        reconnectJob = managerScope.launch {
+            delay(5000)
+            connect(url)
+        }
     }
 
     fun disconnect() {
-        webSocket?.close(1000, "Normal closure")
+        stopHeartbeat()
+        reconnectJob?.cancel()
+        webSocket?.close(1000, "User initiated disconnect")
         _state.value = SocketState.Disconnected
     }
 }

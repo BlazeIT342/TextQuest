@@ -5,9 +5,14 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [CampaignEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [CampaignEntity::class, PlayerProgressEntity::class],
+    version = 5,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun campaignDao(): CampaignDao
+    abstract fun progressDao(): PlayerProgressDao
 
     companion object {
         @Volatile
@@ -19,7 +24,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "quest_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 instance = newInstance
                 newInstance
             }

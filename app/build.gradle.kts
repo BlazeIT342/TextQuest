@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.room.ktx)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.okhttp)
+    implementation(libs.androidx.biometric)
     testImplementation(libs.mockk)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

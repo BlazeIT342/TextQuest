@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class CampaignEntity(
     @PrimaryKey val campaignId: String,
     val title: String,
+    val description: String,
     val difficultyLevel: Int,
     val isCompleted: Boolean,
     val releaseDateTimestamp: Long,
